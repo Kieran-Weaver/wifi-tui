@@ -1,3 +1,4 @@
+#include "arena.h"
 #include <netlink/netlink.h>
 #include <netlink/genl/genl.h>
 #include <linux/nl80211.h>
@@ -8,6 +9,7 @@
 #include <string.h>
 
 #define MAX_INTFS 256
+#define ARENA_SIZE 65536
 
 struct intf {
 	char* name;
@@ -16,6 +18,7 @@ struct intf {
 
 struct intfs {
 	int len; // number of interfaces
+	struct arena a;
 	struct intf *intfs;
 };
 
@@ -23,19 +26,9 @@ static void add_intf( struct intfs* intfs, int i, const char* name ) {
 	int len = strlen( name );
 
 	intfs->intfs[ i ].len = len;
-	intfs->intfs[ i ].name = malloc( len + 1 );
+	intfs->intfs[ i ].name = NEW( &intfs->a, char, len + 1 );
 	memcpy( intfs->intfs[ i ].name, name, len );
 	intfs->intfs[ i ].name[ len ] = '\0';
-}
-
-static void free_intfs( struct intfs* intfs ) {
-	int i;
-
-	for ( i = 0; i < intfs->len; i++ ) {
-		free( intfs->intfs[ i ].name );
-	}
-
-	free( intfs );
 }
 
 static int intf_cb( struct nl_msg *msg, void* ctx ) {
@@ -61,8 +54,12 @@ static int intf_cb( struct nl_msg *msg, void* ctx ) {
 
 int main() {
 	struct nl_sock *sock = nl_socket_alloc();
-	struct intfs *intfs = calloc( 1, sizeof( struct intfs ) );
-	intfs->intfs = calloc( MAX_INTFS, sizeof( struct intf ) );
+	struct arena a = new_arena( ARENA_SIZE );
+	struct intfs intfs;
+
+	intfs.len = 0;
+	intfs.a = a;
+	intfs.intfs = NEW( &intfs.a, struct intf, MAX_INTFS );
 
 	nl_connect( sock, NETLINK_ROUTE );
 
@@ -72,14 +69,14 @@ int main() {
 	int ret = nl_send_simple( sock, RTM_GETLINK, NLM_F_REQUEST | NLM_F_DUMP, &msg, sizeof( msg ) );
 	assert( ret > 0 );
 
-	nl_socket_modify_cb( sock, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, intfs );
+	nl_socket_modify_cb( sock, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, &intfs );
 	nl_recvmsgs_default( sock );
 
-	for ( int i = 0; i < intfs->len; i++ ) {
-		printf( "%s\n", intfs->intfs[ i ].name );
+	for ( int i = 0; i < intfs.len; i++ ) {
+		printf( "%s\n", intfs.intfs[ i ].name );
 	}
 
-	free_intfs( intfs );
+	free_arena( &a );
 	nl_socket_free( sock );
 
 	return 0;
