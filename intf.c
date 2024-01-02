@@ -1,5 +1,6 @@
 #include "intf.h"
 #include "arena.h"
+#include "nl.h"
 #include <netlink/netlink.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
@@ -46,35 +47,27 @@ static int intf_cb( struct nl_msg *msg, void* ctx ) {
 	return NL_SKIP;
 }
 
-int get_intfs( struct arena *a, struct intfs *intfs, int max_intfs ) {
-	struct nl_sock *sock = nl_socket_alloc();
+int get_intfs( struct arena *a, struct nl* nl, struct intfs *intfs, int max_intfs ) {
 	int res;
 
 	intfs->len = 0;
 	intfs->a = a;
 	intfs->intfs = NEW( intfs->a, struct intf, max_intfs );
 
-	genl_connect( sock );
-	int id = genl_ctrl_resolve( sock, "nl80211" );
-	assert( id >= 0 );
-
 	struct nl_cb* cb = nl_cb_alloc( NL_CB_DEFAULT );
 	nl_cb_set( cb, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, intfs );
 
 	struct nl_msg* msg = nlmsg_alloc();
-	genlmsg_put( msg, NL_AUTO_PORT, NL_AUTO_SEQ, id, 0, NLM_F_DUMP, NL80211_CMD_GET_INTERFACE, 0 );
+	genlmsg_put( msg, NL_AUTO_PORT, NL_AUTO_SEQ, nl->id, 0, NLM_F_DUMP, NL80211_CMD_GET_INTERFACE, 0 );
 
-	res = nl_send_auto( sock, msg );
+	res = nl_send_auto( nl->sock, msg );
 	assert( res > 0 );
 
-	res = nl_recvmsgs( sock, cb );
+	res = nl_recvmsgs( nl->sock, cb );
 	assert( !res );
-
-	nl_close( sock );
 
 	free( cb );
 	nlmsg_free( msg );
-	nl_socket_free( sock );
 
 	return intfs->len;
 }
