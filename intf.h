@@ -5,6 +5,7 @@ struct arena;
 
 struct intf {
 	char* name;
+	int idx; /* Internal libnl index */
 	int len;
 };
 

@@ -2,6 +2,7 @@
 #include "arena.h"
 #include <netlink/netlink.h>
 #include <netlink/genl/genl.h>
+#include <netlink/genl/ctrl.h>
 #include <linux/nl80211.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -9,52 +10,70 @@
 #include <stdatomic.h>
 #include <string.h>
 
-static void add_intf( struct intfs* intfs, int i, const char* name ) {
+static void add_intf( struct intfs* intfs, int i, const char* name, int idx ) {
 	int len = strlen( name );
 
 	intfs->intfs[ i ].len = len;
 	intfs->intfs[ i ].name = NEW( intfs->a, char, len + 1 );
 	memcpy( intfs->intfs[ i ].name, name, len );
 	intfs->intfs[ i ].name[ len ] = '\0';
+	intfs->intfs[ i ].idx = idx;
 }
 
 static int intf_cb( struct nl_msg *msg, void* ctx ) {
 	struct intfs *intfs = (struct intfs*) ctx;
+	struct genlmsghdr *gnl_hdr = NLMSG_DATA( nlmsg_hdr( msg ) );
+	struct nlattr *tb_msg[ NL80211_ATTR_MAX + 1 ];
 
-	struct nlmsghdr *nl_hdr = nlmsg_hdr( msg );
-	struct ifinfomsg *intf = NLMSG_DATA( nl_hdr );
-	struct rtattr *rta = IFLA_RTA( intf );
-	int bytes_left = nl_hdr->nlmsg_len - NLMSG_LENGTH(sizeof(*intf));
+	const char* name;
+	unsigned int idx = -1;
 
-	for ( ; RTA_OK( rta, bytes_left ) ; rta = RTA_NEXT( rta, bytes_left ) ) {
-		if ( rta->rta_type == IFLA_IFNAME ) {
-			const char* name = RTA_DATA( rta );
-			add_intf( intfs, intfs->len, name );
-			intfs->len++;
+	nla_parse( tb_msg, 
+		   NL80211_ATTR_MAX,
+		   genlmsg_attrdata( gnl_hdr, 0 ),
+		   genlmsg_attrlen( gnl_hdr, 0 ),
+		   NULL );
+
+	if ( tb_msg[ NL80211_ATTR_IFNAME ] ) {
+		name = nla_get_string( tb_msg[ NL80211_ATTR_IFNAME ] );
+		if ( tb_msg[ NL80211_ATTR_IFINDEX ] ) {
+			idx = nla_get_u32( tb_msg[ NL80211_ATTR_IFINDEX ] );
 		}
+		add_intf( intfs, intfs->len, name, idx );
+		intfs->len++;
 	}
 
-	return NL_OK;
+	return NL_SKIP;
 }
 
 int get_intfs( struct arena *a, struct intfs *intfs, int max_intfs ) {
 	struct nl_sock *sock = nl_socket_alloc();
+	int res;
 
 	intfs->len = 0;
 	intfs->a = a;
 	intfs->intfs = NEW( intfs->a, struct intf, max_intfs );
 
-	nl_connect( sock, NETLINK_ROUTE );
+	genl_connect( sock );
+	int id = genl_ctrl_resolve( sock, "nl80211" );
+	assert( id >= 0 );
 
-	struct rtgenmsg msg = {};
-	msg.rtgen_family = AF_PACKET;
+	struct nl_cb* cb = nl_cb_alloc( NL_CB_DEFAULT );
+	nl_cb_set( cb, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, intfs );
 
-	int ret = nl_send_simple( sock, RTM_GETLINK, NLM_F_REQUEST | NLM_F_DUMP, &msg, sizeof( msg ) );
-	assert( ret > 0 );
+	struct nl_msg* msg = nlmsg_alloc();
+	genlmsg_put( msg, NL_AUTO_PORT, NL_AUTO_SEQ, id, 0, NLM_F_DUMP, NL80211_CMD_GET_INTERFACE, 0 );
 
-	nl_socket_modify_cb( sock, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, intfs );
-	nl_recvmsgs_default( sock );
+	res = nl_send_auto( sock, msg );
+	assert( res > 0 );
 
+	res = nl_recvmsgs( sock, cb );
+	assert( !res );
+
+	nl_close( sock );
+
+	free( cb );
+	nlmsg_free( msg );
 	nl_socket_free( sock );
 
 	return intfs->len;
