@@ -1,5 +1,5 @@
 CC ?= gcc
-TARGET := intf
+TARGET := wifitui
 CPPFLAGS = -I /usr/include/libnl3/ -MT $@ -MMD -MP -MF build/$*.d
 CFLAGS := -Og -g 
 LDFLAGS := -lnl-3 -lnl-genl-3
@@ -14,12 +14,12 @@ DEPS := $(OBJS:.o=.d)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
-intf: $(OBJS)
+$(TARGET): $(OBJS)
 	$(CC) $^ -o $(TARGET) $(LDFLAGS)
 
-all: intf
+all: $(TARGET)
 
 clean:
-	rm -fr intf build
+	rm -fr $(TARGET) build
 
 -include $(DEPS)
