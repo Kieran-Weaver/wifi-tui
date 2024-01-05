@@ -31,7 +31,7 @@ int main( int argc, char *argv[]) {
 	ui.changed = false;
 	ui.selection = 0;
 	ui.all_intfs = &intfs;
-	ui.all_ssids = NULL;
+	ui.all_ssids = &ssids;
 	ui.chosen_passwd.data = passwd;
 	ui.chosen_passwd.len = 0;
 

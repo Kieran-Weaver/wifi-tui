@@ -23,10 +23,10 @@ int ui_handle_key( struct ui* ui, struct tb_event* ev, int mode ) {
 
 	switch ( mode ) {
 	case MODE_INTF:
-		max = ui->all_intfs->len;
+		max = ui->all_intfs->len - 1;
 		break;
 	case MODE_SSID:
-		max = ui->all_ssids->len;
+		max = ui->all_ssids->len - 1;
 		break;
 	default:
 		max = 0;
@@ -59,7 +59,7 @@ int ui_handle_key( struct ui* ui, struct tb_event* ev, int mode ) {
 		break;
 	}
 
-	if ( ui->selection > max ) ui->selection = max;
+	if ( ui->selection >= max ) ui->selection = max;
 	else if ( ui->selection < 0 ) ui->selection = 0;
 
 	// WPA2 passkeys are ASCII only
@@ -95,10 +95,61 @@ static void ui_draw_box( int x1, int y1, int x2, int y2, uint16_t fg, uint16_t b
 	}
 }
 
+#define DRAW_LIST( ITEM ) \
+	for ( int i = 0; i < ui->all_##ITEM##s->len; i++ ) { \
+		const char* str = ui->all_##ITEM##s->ITEM##s[ i ].name; \
+		if ( i == ui->selection ) { \
+			fg = TB_BLACK; \
+			bg = TB_WHITE; \
+		} else { \
+			fg = TB_WHITE; \
+			bg = TB_BLACK; \
+		} \
+		tb_printf( sidebar_width + 2, line++, fg, bg, "%s", str ); \
+	}
+
 int ui_draw( struct ui* ui, int mode ) {
 	int width = tb_width() - 1;
 	int height = tb_height() - 1;
+	uint16_t fg, bg;
+
+	int sidebar_width = width / 3;
+	if ( sidebar_width < 32 ) sidebar_width = 32;
+
 	tb_clear();
-	ui_draw_box( 0, 0, width, height, TB_WHITE, TB_DEFAULT );
+	// sidebar
+	ui_draw_box( 0, 0, sidebar_width, height, TB_WHITE, TB_BLACK );
+
+	int line = 3;
+	if ( ( mode == MODE_SSID ) || ( mode == MODE_PASS ) ) {
+		// Interface selected
+		tb_print( 2, line++, TB_WHITE, TB_DEFAULT, "Interface: " );
+		tb_printf( 2, line++, TB_WHITE, TB_DEFAULT, "%s", ui->chosen_intf.name );
+	}
+
+	if ( mode == MODE_PASS ) {
+		// SSID Selected
+		tb_print( 2, line++, TB_WHITE, TB_DEFAULT, "SSID: " );
+		tb_printf( 2, line++, TB_WHITE, TB_DEFAULT, "%s", ui->chosen_ssid.name );
+	}
+
+	// main box
+	ui_draw_box( sidebar_width, 0, width, height, TB_WHITE, TB_BLACK );
+
+	line = 3;
+	switch ( mode ) {
+	case MODE_INTF:
+		tb_print( sidebar_width + 2, line++, TB_WHITE, TB_BLACK, "Choose Interface: " );
+		DRAW_LIST( intf );
+		break;
+	case MODE_SSID:
+		tb_print( sidebar_width + 2, line++, TB_WHITE, TB_BLACK, "Choose SSID: " );
+		DRAW_LIST( ssid );
+		break;
+	case MODE_PASS:
+		tb_print( sidebar_width + 2, line++, TB_WHITE, TB_BLACK, "Password: " );
+		break;
+	}
+
 	tb_present();
 }
