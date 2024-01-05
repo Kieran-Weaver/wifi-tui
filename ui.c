@@ -45,6 +45,7 @@ int ui_handle_key( struct ui* ui, struct tb_event* ev, int mode ) {
 		code = EV_SELECT;
 		break;
 	case TB_KEY_BACKSPACE:
+	case TB_KEY_BACKSPACE2:
 		if ( ui->chosen_passwd.len ) {
 			ui->chosen_passwd.len--;
 			ui->chosen_passwd.data[ ui->chosen_passwd.len ] = '\0';
@@ -63,8 +64,7 @@ int ui_handle_key( struct ui* ui, struct tb_event* ev, int mode ) {
 	// WPA2 passkeys are ASCII only
 	if ( ( mode == MODE_PASS ) && ( keycode >= 32 ) && ( keycode <= 126 ) ) {
 		if ( ui->chosen_passwd.len < PASSWD_MAX ) {
-			ui->chosen_passwd.data[ ui->chosen_passwd.len ] = keycode;
-			ui->chosen_passwd.len++;
+			ui->chosen_passwd.data[ ui->chosen_passwd.len++ ] = keycode;
 		}
 	}
 
@@ -110,9 +110,12 @@ int ui_draw( struct ui* ui, int mode ) {
 	int width = tb_width() - 1;
 	int height = tb_height() - 1;
 	uint16_t fg, bg;
+	char fmt[ 10 ] = {};
+	int psklen;
 
 	int sidebar_width = width / 3;
 	if ( sidebar_width < 32 ) sidebar_width = 32;
+       	psklen = width - sidebar_width - 5;
 
 	tb_clear();
 	// sidebar
@@ -146,6 +149,9 @@ int ui_draw( struct ui* ui, int mode ) {
 		break;
 	case MODE_PASS:
 		tb_print( sidebar_width + 2, line++, TB_WHITE, TB_BLACK, "Password: " );
+		if ( psklen > 64 ) psklen = 64;
+		snprintf( fmt, sizeof( fmt ) - 1, "%%-%ds", psklen );
+		tb_printf( sidebar_width + 3, line++, TB_WHITE | TB_UNDERLINE, TB_BLACK, fmt, ui->chosen_passwd.data );
 		break;
 	}
 

@@ -55,6 +55,7 @@ int main( int argc, char *argv[]) {
 				case MODE_SSID:
 					ui.chosen_ssid = ssids->ssids[ ui.selection ];
 					mode = MODE_PASS;
+					break;
 				case MODE_PASS:
 					code = EV_EXIT;
 					break;
