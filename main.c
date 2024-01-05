@@ -22,7 +22,7 @@ int main( int argc, char *argv[]) {
 	struct arena a = arena;
 
 	nl_alloc( &nl );
-	int len = get_intfs( &a, &nl, &intfs, MAX_INTFS );
+	get_intfs( &a, &nl, &intfs, MAX_INTFS );
 
 	struct tb_event ev;
 	int mode = MODE_INTF;
@@ -46,6 +46,7 @@ int main( int argc, char *argv[]) {
 				switch (mode) {
 				case MODE_INTF:
 					ui.chosen_intf = intfs.intfs[ ui.selection ];
+					get_ssids( &ssids, &nl, ui.chosen_intf.idx ); 
 					mode = MODE_SSID;
 					break;
 				case MODE_SSID:
