@@ -5,15 +5,17 @@
 #include "ui.h"
 #define TB_IMPL
 #include <termbox2.h>
+#include <assert.h>
 
 #define ARENA_SIZE 65536
-#define MAX_INTFS 256
+#define MAX_INTFS 64
+#define MAX_SSIDS 64
 
 static char passwd[ PASSWD_MAX ];
 
 int main( int argc, char *argv[]) {
 	struct intfs intfs;
-	struct ssids ssids;
+	struct ssids* ssids;
 	struct ui ui;
 	struct intf curr;
 	struct nl nl;
@@ -23,6 +25,7 @@ int main( int argc, char *argv[]) {
 
 	nl_alloc( &nl );
 	get_intfs( &a, &nl, &intfs, MAX_INTFS );
+	ssids = make_ssids( &a, MAX_SSIDS );
 
 	struct tb_event ev;
 	int mode = MODE_INTF;
@@ -31,7 +34,7 @@ int main( int argc, char *argv[]) {
 	ui.changed = false;
 	ui.selection = 0;
 	ui.all_intfs = &intfs;
-	ui.all_ssids = &ssids;
+	ui.all_ssids = ssids;
 	ui.chosen_passwd.data = passwd;
 	ui.chosen_passwd.len = 0;
 
@@ -46,11 +49,11 @@ int main( int argc, char *argv[]) {
 				switch (mode) {
 				case MODE_INTF:
 					ui.chosen_intf = intfs.intfs[ ui.selection ];
-					get_ssids( &ssids, &nl, ui.chosen_intf.idx ); 
+					assert( !get_ssids( ssids, &nl, ui.chosen_intf.idx ) ); 
 					mode = MODE_SSID;
 					break;
 				case MODE_SSID:
-					ui.chosen_ssid = ssids.ssids[ ui.selection ];
+					ui.chosen_ssid = ssids->ssids[ ui.selection ];
 					mode = MODE_PASS;
 				case MODE_PASS:
 					code = EV_EXIT;

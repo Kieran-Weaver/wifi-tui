@@ -26,6 +26,8 @@ static int intf_cb( struct nl_msg *msg, void* ctx ) {
 	struct genlmsghdr *gnl_hdr = NLMSG_DATA( nlmsg_hdr( msg ) );
 	struct nlattr *tb_msg[ NL80211_ATTR_MAX + 1 ];
 
+	if ( intfs->len >= intfs->max_intfs ) return NL_SKIP;
+
 	const char* name;
 	unsigned int idx = -1;
 
@@ -53,6 +55,7 @@ int get_intfs( struct arena *a, struct nl* nl, struct intfs *intfs, int max_intf
 	intfs->len = 0;
 	intfs->a = a;
 	intfs->intfs = NEW( intfs->a, struct intf, max_intfs );
+	intfs->max_intfs = max_intfs;
 
 	struct nl_cb* cb = nl_cb_alloc( NL_CB_DEFAULT );
 	nl_cb_set( cb, NL_CB_VALID, NL_CB_CUSTOM, intf_cb, intfs );

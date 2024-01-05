@@ -50,7 +50,7 @@ int ssid_insert( struct ssid_set* ssids, const char* ssid, int len ) {
 		if ( ssids->ssids[ i ] == shash ) return 0;
 	}
 
-	ssids->ssids[ ssids->len ] = shash;
+	ssids->ssids[ ssids->len++ ] = shash;
 
 	return 1;
 }

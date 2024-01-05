@@ -12,6 +12,7 @@ struct intf {
 
 struct intfs {
 	int len;
+	int max_intfs;
 	struct arena* a;
 	struct intf *intfs;
 };

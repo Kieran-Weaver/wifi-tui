@@ -2,7 +2,6 @@
 #include "termbox2.h"
 #include "scan.h"
 #include "intf.h"
-#include <stdio.h>
 
 int ui_init( struct ui* ui ) {
 	int ret;
@@ -34,7 +33,6 @@ int ui_handle_key( struct ui* ui, struct tb_event* ev, int mode ) {
 
 	switch ( ev->key ) {
 	case TB_KEY_CTRL_C:
-		printf(" EXIT \n");
 		code = EV_EXIT;
 		break;
 	case TB_KEY_ARROW_UP:

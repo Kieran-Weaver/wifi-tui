@@ -1,6 +1,7 @@
 #include "scan.h"
 #include "arena.h"
 #include "nl.h"
+#include "ssid.h"
 
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
@@ -23,8 +24,10 @@ struct ssids* make_ssids( struct arena* a, int max_ssids ) {
 	struct ssids* ssids = NEW( a, struct ssids );
 
 	ssids->len = 0;
+	ssids->max_ssids = max_ssids;
 	ssids->a = a;
 	ssids->ssids = NEW( a, struct ssid, max_ssids );
+	ssids->internal = alloc_ssids( a, max_ssids );
 
 	return ssids;
 }
@@ -131,9 +134,101 @@ fail:
 	return 1;
 }
 
+static int parse_ies( struct ssids* ssids, const unsigned char* ies, int ie_len, int strength ) {
+	struct ssid curr;
+	int len;
+	const uint8_t* data;
+	char ssid[ 64 ];
+
+	curr.strength = strength;
+
+	if ( !ies || ie_len < 0 ) return 1;
+
+	while ( ie_len >= 2 && ie_len -2 >= ies[ 1 ] ) {
+		if ( ies[0] == 0 && ies[ 1 ] <= 32 ) {
+			// Found a possible SSID
+			len = ies[ 1 ];
+			data = ies + 2;
+
+			if ( len > 63 ) len = 63;
+			memcpy( ssid, data, len );
+			ssid[ len ] = '\0';
+
+			// Not seen before and we have space
+			if ( ssids->len < ssids->max_ssids &&
+			     ssid_valid( ssid, len ) &&
+			     ssid_insert( ssids->internal, ssid, len ) ) {
+				curr.name = NEW( ssids->a, char, len + 1 );
+				curr.len = len;
+				memcpy( curr.name, ssid, len + 1 );
+				ssids->ssids[ ssids->len++ ] = curr;
+			}
+		}
+		ie_len -= ies[ 1 ] + 2;
+		ies += ies[ 1 ] + 2;
+	}
+
+	return 0;
+}
+
+static int receive_scan_result( struct nl_msg* msg, void* arg ) {
+	struct ssids* ssids = (struct ssids*)arg;
+	struct genlmsghdr* gnlh = (struct genlmsghdr*)nlmsg_data( nlmsg_hdr( msg ) );
+	int strength = -0xFFFF;
+	unsigned char* ie = NULL;
+	int ie_len = 0;
+
+	struct nlattr* tb[ NL80211_ATTR_MAX + 1] = {};
+	struct nlattr* bss[ NL80211_BSS_MAX + 1] = {};
+	struct nla_policy bss_policy[ NL80211_BSS_MAX + 1 ] = {};
+
+	int err = nla_parse( tb, NL80211_ATTR_MAX, genlmsg_attrdata( gnlh, 0 ), genlmsg_attrlen( gnlh, 0 ), NULL );
+	if ( err < 0 ) return NL_SKIP;
+	if ( !tb[ NL80211_ATTR_BSS ] ) return NL_SKIP;
+
+	err = nla_parse_nested( bss, NL80211_BSS_MAX, tb[ NL80211_ATTR_BSS ], bss_policy );
+	if ( err < 0 ) return NL_SKIP;
+
+	if ( !bss[ NL80211_BSS_BSSID ] || !bss[ NL80211_BSS_INFORMATION_ELEMENTS ] ) return NL_SKIP;
+
+	if ( bss[ NL80211_BSS_SIGNAL_MBM ] ) {
+		strength = (int32_t)nla_get_u32( bss[ NL80211_BSS_SIGNAL_MBM ] ) / 100;
+	}
+
+	if ( bss[ NL80211_BSS_INFORMATION_ELEMENTS ] ) {
+		struct nlattr* ies = bss[ NL80211_BSS_INFORMATION_ELEMENTS ];
+		ie = nla_data( ies );
+		ie_len = nla_len( ies );
+		parse_ies( ssids, ie, ie_len, strength );
+	}
+
+	if ( bss[ NL80211_BSS_BEACON_IES ] ) {
+		ie = nla_data( bss[ NL80211_BSS_BEACON_IES ] );
+		ie_len = nla_len( bss[ NL80211_BSS_BEACON_IES ] );
+		parse_ies( ssids, ie, ie_len, strength );
+	}
+
+	return NL_SKIP;
+}
 
 int get_ssids( struct ssids* ssids, struct nl* nl, int if_index ) {
-	// Not implemented
-	trigger_scan( nl->sock, if_index, nl->id );
-	return -1;
+	// Trigger scan
+	if ( trigger_scan( nl->sock, if_index, nl->id ) ) return 1;
+
+	struct nl_msg* msg = nlmsg_alloc();
+
+	// Prepare message
+	genlmsg_put( msg, 0, 0, nl->id, 0, NLM_F_DUMP, NL80211_CMD_GET_SCAN, 0 );
+	nla_put_u32( msg, NL80211_ATTR_IFINDEX, if_index );
+	nl_socket_modify_cb( nl->sock, NL_CB_VALID, NL_CB_CUSTOM, receive_scan_result, ssids );
+
+	// Send message
+	int err = nl_send_auto( nl->sock, msg );
+	if ( err < 0 ) return 1;
+
+	err = nl_recvmsgs_default( nl->sock );
+	if ( err < 0 ) return 1;
+
+	nlmsg_free( msg );
+	return 0;
 }
